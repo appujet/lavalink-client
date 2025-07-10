@@ -1,5 +1,5 @@
 import type { Track, UnresolvedTrack } from "./Track";
-import type { Awaitable } from "./Utils";
+import { Awaitable } from "./Utils";
 
 export interface StoredQueue {
     current: Track | null;

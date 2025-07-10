@@ -132,7 +132,7 @@ export class LavalinkNode {
             headers: {
                 "Authorization": this.options.authorization
             },
-            signal: this.options.requestSignalTimeoutMS && this.options.requestSignalTimeoutMS > 0 ? AbortSignal.timeout(this.options.requestSignalTimeoutMS) : undefined,
+            signal: undefined,
         }
 
         modify?.(options);
@@ -151,11 +151,26 @@ export class LavalinkNode {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { path, extraQueryUrlParams, ...fetchOptions } = options; // destructure fetch only options
 
-        const response = await fetch(urlToUse, fetchOptions);
+        const abortController = new AbortController();
+        let timeoutId: NodeJS.Timeout | undefined;
 
-        this.calls++;
+        if (this.options.requestSignalTimeoutMS && this.options.requestSignalTimeoutMS > 0) {
+            timeoutId = setTimeout(() => {
+                abortController.abort();
+            }, this.options.requestSignalTimeoutMS);
 
-        return { response, options: options };
+            fetchOptions.signal = abortController.signal;
+        }
+
+        try {
+            const response = await fetch(urlToUse, fetchOptions);
+            this.calls++;
+            return { response, options: options };
+        } finally {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        }
     }
     /**
      * Makes an API call to the Node. Should only be used for manual parsing like for not supported plugins
@@ -255,7 +270,7 @@ export class LavalinkNode {
                 thumbnail: (res.data.info?.artworkUrl) || (res.data.pluginInfo?.artworkUrl) || ((typeof res.data?.info?.selectedTrack !== "number" || res.data?.info?.selectedTrack === -1) ? null : resTracks[res.data?.info?.selectedTrack] ? (resTracks[res.data?.info?.selectedTrack]?.info?.artworkUrl || resTracks[res.data?.info?.selectedTrack]?.info?.pluginInfo?.artworkUrl) : null) || null,
                 uri: res.data.info?.url || res.data.info?.uri || res.data.info?.link || res.data.pluginInfo?.url || res.data.pluginInfo?.uri || res.data.pluginInfo?.link || null,
                 selectedTrack: typeof res.data?.info?.selectedTrack !== "number" || res.data?.info?.selectedTrack === -1 ? null : resTracks[res.data?.info?.selectedTrack] ? this.NodeManager.LavalinkManager.utils.buildTrack(resTracks[res.data?.info?.selectedTrack], requestUser) : null,
-                duration: resTracks.length ? resTracks.reduce((acc: number, cur: Track & { info: Track["info"] & { length?: number } }) => acc + (cur?.info?.duration || cur?.info?.length || 0), 0) : 0,
+                duration: resTracks.length ? resTracks.reduce((acc: number, cur: Track & { info: Track["info"] & { length?: number }}) => acc + (cur?.info?.duration || cur?.info?.length || 0), 0) : 0,
 
             } : null,
             tracks: (resTracks.length ? resTracks.map(t => this.NodeManager.LavalinkManager.utils.buildTrack(t, requestUser)) : []) as Track[]
@@ -1121,6 +1136,16 @@ export class LavalinkNode {
                 this.reconnect();
             }
         }
+        this.NodeManager.LavalinkManager.players
+            .filter((p) => p?.node?.options?.id === this?.options?.id)
+            .forEach((p) => {
+                if (!this.NodeManager.LavalinkManager.options.autoMove) return (p.playing = false);
+                if (this.NodeManager.LavalinkManager.options.autoMove) {
+                    if (this.NodeManager.nodes.filter((n) => n.connected).size === 0)
+                        return (p.playing = false);
+                    p.moveNode();
+                }
+            });
     }
 
     /** @private util function for handling error events from websocket */

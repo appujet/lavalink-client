@@ -7,7 +7,7 @@ import { DefaultQueueStore } from "./Queue";
 import { ManagerUtils, MiniMap, safeStringify } from "./Utils";
 
 import type {
-    ChannelDeletePacket, VoicePacket, VoiceServer, VoiceState
+	ChannelDeletePacket, VoicePacket, VoiceServer, VoiceState
 } from "./Types/Utils";
 import type { BotClientOptions, LavalinkManagerEvents, ManagerOptions } from "./Types/Manager";
 import type { PlayerOptions } from "./Types/Player";
@@ -109,6 +109,7 @@ export class LavalinkManager extends EventEmitter {
                     maxAmount: options?.playerOptions?.maxErrorsPerTime?.maxAmount ?? 3
                 }
             },
+            autoMove: options?.autoMove ?? false,
             linksWhitelist: options?.linksWhitelist ?? [],
             linksBlacklist: options?.linksBlacklist ?? [],
             linksAllowed: options?.linksAllowed ?? true,

@@ -825,7 +825,6 @@ export class Player {
                         position: currentTrack ? data.position : 0,
                         volume: data.lavalinkVolume,
                         paused: data.paused,
-                        //filters: { ...data.filters, equalizer: data.equalizer }, Sending filters on nodeChange causes issues (player gets dicsonnected)
                     }
                 });
             }
@@ -845,6 +844,18 @@ export class Player {
             throw new Error(`Failed to change the node: ${error}`);
         } finally {
             this.set("internal_nodeChanging", undefined);
+        }
+    }
+    public async moveNode(node?: string) {
+        try {
+            if (!node) node = Array.from(this.LavalinkManager.nodeManager.leastUsedNodes("cpuLavalink"))
+                .find(n => n.connected && n.options.id !== this.node.options.id).id;
+            if (!node || !this.LavalinkManager.nodeManager.nodes.get(node)) throw new RangeError("No nodes are available.");
+            if (this.node.options.id === node) return this;
+            this.LavalinkManager.emit("debug", DebugEvents.PlayerChangeNode, { state: "log", message: `Player.moveNode() was executed, trying to move from "${this.node.id}" to "${node}"`, functionLayer: "Player > moveNode()" });
+            return await this.changeNode(this.LavalinkManager.nodeManager.nodes.get(node)!);
+        } catch (error) {
+            throw new Error(`Failed to move the node: ${error}`);
         }
     }
 
