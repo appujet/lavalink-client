@@ -90,11 +90,7 @@ export const DefaultSources: Record<SearchPlatform, LavalinkSearchPlatform | Cli
     "jiosaavn": "jssearch",
     "js": "jssearch",
     "jssearch": "jssearch",
-    "jsrec": "jsrec",
-
-    // audiomack
-    "audiomack": "admsearch",
-    "admsearch": "admsearch",
+    "jsrec": "jsrec"
 }
 
 /** Lavalink Plugins definiton */

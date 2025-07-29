@@ -5,12 +5,12 @@ import { DebugEvents, DestroyReasons, validSponsorBlocks } from "./Constants";
 import { NodeSymbol, queueTrackEnd, safeStringify } from "./Utils";
 
 import type {
-	Base64, InvalidLavalinkRestRequest, LavalinkPlayer, LavaSearchQuery, LavaSearchResponse,
-	LoadTypes, LyricsFoundEvent, LyricsLineEvent, LyricsNotFoundEvent, PlayerEvents,
-	PlayerEventType, PlayerUpdateInfo, RoutePlanner, SearchQuery, SearchResult,
-	Session, SponsorBlockChaptersLoaded, SponsorBlockChapterStarted, SponsorBlockSegmentSkipped,
-	SponsorBlockSegmentsLoaded, TrackEndEvent, TrackExceptionEvent, TrackStartEvent,
-	TrackStuckEvent, WebSocketClosedEvent
+    Base64, InvalidLavalinkRestRequest, LavalinkPlayer, LavaSearchQuery, LavaSearchResponse,
+    LoadTypes, LyricsFoundEvent, LyricsLineEvent, LyricsNotFoundEvent, PlayerEvents,
+    PlayerEventType, PlayerUpdateInfo, RoutePlanner, SearchQuery, SearchResult,
+    Session, SponsorBlockChaptersLoaded, SponsorBlockChapterStarted, SponsorBlockSegmentSkipped,
+    SponsorBlockSegmentsLoaded, TrackEndEvent, TrackExceptionEvent, TrackStartEvent,
+    TrackStuckEvent, WebSocketClosedEvent
 } from "./Types/Utils";
 import type { Player } from "./Player";
 import type { DestroyReasonsType, DisconnectReasonsType } from "./Types/Player";
@@ -132,7 +132,7 @@ export class LavalinkNode {
             headers: {
                 "Authorization": this.options.authorization
             },
-            signal: undefined,
+            signal: this.options.requestSignalTimeoutMS && this.options.requestSignalTimeoutMS > 0 ? AbortSignal.timeout(this.options.requestSignalTimeoutMS) : undefined,
         }
 
         modify?.(options);
@@ -151,26 +151,11 @@ export class LavalinkNode {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { path, extraQueryUrlParams, ...fetchOptions } = options; // destructure fetch only options
 
-        const abortController = new AbortController();
-        let timeoutId: NodeJS.Timeout | undefined;
+        const response = await fetch(urlToUse, fetchOptions);
 
-        if (this.options.requestSignalTimeoutMS && this.options.requestSignalTimeoutMS > 0) {
-            timeoutId = setTimeout(() => {
-                abortController.abort();
-            }, this.options.requestSignalTimeoutMS);
+        this.calls++;
 
-            fetchOptions.signal = abortController.signal;
-        }
-
-        try {
-            const response = await fetch(urlToUse, fetchOptions);
-            this.calls++;
-            return { response, options: options };
-        } finally {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
-        }
+        return { response, options: options };
     }
     /**
      * Makes an API call to the Node. Should only be used for manual parsing like for not supported plugins
@@ -270,7 +255,7 @@ export class LavalinkNode {
                 thumbnail: (res.data.info?.artworkUrl) || (res.data.pluginInfo?.artworkUrl) || ((typeof res.data?.info?.selectedTrack !== "number" || res.data?.info?.selectedTrack === -1) ? null : resTracks[res.data?.info?.selectedTrack] ? (resTracks[res.data?.info?.selectedTrack]?.info?.artworkUrl || resTracks[res.data?.info?.selectedTrack]?.info?.pluginInfo?.artworkUrl) : null) || null,
                 uri: res.data.info?.url || res.data.info?.uri || res.data.info?.link || res.data.pluginInfo?.url || res.data.pluginInfo?.uri || res.data.pluginInfo?.link || null,
                 selectedTrack: typeof res.data?.info?.selectedTrack !== "number" || res.data?.info?.selectedTrack === -1 ? null : resTracks[res.data?.info?.selectedTrack] ? this.NodeManager.LavalinkManager.utils.buildTrack(resTracks[res.data?.info?.selectedTrack], requestUser) : null,
-                duration: resTracks.length ? resTracks.reduce((acc: number, cur: Track & { info: Track["info"] & { length?: number }}) => acc + (cur?.info?.duration || cur?.info?.length || 0), 0) : 0,
+                duration: resTracks.length ? resTracks.reduce((acc: number, cur: Track & { info: Track["info"] & { length?: number } }) => acc + (cur?.info?.duration || cur?.info?.length || 0), 0) : 0,
 
             } : null,
             tracks: (resTracks.length ? resTracks.map(t => this.NodeManager.LavalinkManager.utils.buildTrack(t, requestUser)) : []) as Track[]
@@ -495,7 +480,7 @@ export class LavalinkNode {
      * ```
      */
     public destroy(destroyReason?: DestroyReasonsType, deleteNode: boolean = true, movePlayers: boolean = false): void {
-        if (!this.connected) return;
+        // if (!this.connected) return; This Prevents the node from being destroyed if it is not connected, but we want to allow it to be destroyed even if not connected.
 
         const players = this.NodeManager.LavalinkManager.players.filter(p => p.node.id === this.id);
         if (players.size) {
@@ -1136,6 +1121,7 @@ export class LavalinkNode {
                 this.reconnect();
             }
         }
+        
         this.NodeManager.LavalinkManager.players
             .filter((p) => p?.node?.options?.id === this?.options?.id)
             .forEach((p) => {
@@ -1281,8 +1267,11 @@ export class LavalinkNode {
     }
     /** @private util function for handling trackStart event */
     private async trackStart(player: Player, track: Track, payload: TrackStartEvent): Promise<void> {
-        player.playing = true;
-        player.paused = false;
+        if (!player.get('internal_nodeChanging')) { // Don't change the playing state if a nodeChange is in progress.
+
+            player.playing = true;
+            player.paused = false;
+        }
         // don't emit the event if previous track == new track aka track loop
         if (this.NodeManager.LavalinkManager.options?.emitNewSongsOnly === true && player.queue.previous[0]?.info?.identifier === track?.info?.identifier) {
             if (this.NodeManager.LavalinkManager.options?.advancedOptions?.enableDebugEvents) {
@@ -1506,6 +1495,8 @@ export class LavalinkNode {
             r.body = safeStringify(segments.map(v => v.toLowerCase()));
         });
 
+        player.set("internal_sponsorBlockCategories", segments.map(v => v.toLowerCase()));
+
         if (this.NodeManager.LavalinkManager.options?.advancedOptions?.enableDebugEvents) {
             this.NodeManager.LavalinkManager.emit("debug", DebugEvents.SetSponsorBlock, {
                 state: "log",
@@ -1535,6 +1526,8 @@ export class LavalinkNode {
         await this.request(`/sessions/${this.sessionId}/players/${player.guildId}/sponsorblock/categories`, (r) => {
             r.method = "DELETE";
         });
+
+        player.set("internal_sponsorBlockCategories", []);
 
         if (this.NodeManager.LavalinkManager.options?.advancedOptions?.enableDebugEvents) {
             this.NodeManager.LavalinkManager.emit("debug", DebugEvents.DeleteSponsorBlock, {

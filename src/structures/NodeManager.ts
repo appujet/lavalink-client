@@ -156,28 +156,33 @@ export class NodeManager extends EventEmitter {
             case "memory": {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.memory?.used || 0) - (b.stats?.memory?.used || 0)) // sort after memor
-            } case "cpuLavalink": {
+            } break;
+            case "cpuLavalink": {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.cpu?.lavalinkLoad || 0) - (b.stats?.cpu?.lavalinkLoad || 0)) // sort after memor
-            } case "cpuSystem": {
+            } break;
+            case "cpuSystem": {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.cpu?.systemLoad || 0) - (b.stats?.cpu?.systemLoad || 0)) // sort after memor
-            } case "calls": {
+            } break;
+            case "calls": {
                 return connectedNodes
                     .sort((a, b) => a.calls - b.calls); // client sided sorting
-            } case "playingPlayers": {
+            } break;
+            case "playingPlayers": {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.playingPlayers || 0) - (b.stats?.playingPlayers || 0))
-            } case "players": {
+            } break;
+            case "players": {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.players || 0) - (b.stats?.players || 0))
-            } default: {
+            } break;
+            default: {
                 return connectedNodes
                     .sort((a, b) => (a.stats?.players || 0) - (b.stats?.players || 0))
-            }
+            } break;
         }
     }
-
 
     /**
      * Delete a node from the nodeManager and destroy it
@@ -196,10 +201,12 @@ export class NodeManager extends EventEmitter {
      * ```
      */
     deleteNode(node: LavalinkNodeIdentifier | LavalinkNode, movePlayers: boolean = false): void {
-        const decodeNode = typeof node === "string" ? this.nodes.get(node) : node || this.leastUsedNodes()[0];
-        if (!decodeNode) throw new Error("Node was not found");
-        if (movePlayers) decodeNode.destroy(DestroyReasons.NodeDeleted, true, true);
-        else decodeNode.destroy(DestroyReasons.NodeDeleted);
+        const decodeNode = typeof node === "string" ? this.nodes.get(node) : node;
+        if (!(decodeNode instanceof LavalinkNode))
+            throw new RangeError("nodeManager.deleteNode: The node you provided is not valid or doesn't exist.");
+        if (typeof movePlayers !== "boolean")
+            throw new TypeError("nodeManager.deleteNode: movePlayers must be a boolean");
+        decodeNode.destroy(DestroyReasons.NodeDeleted, true, movePlayers);
         this.nodes.delete(decodeNode.id);
         return;
     }
